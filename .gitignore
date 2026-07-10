@@ -1,9 +1,14 @@
 # Dependencies
 __pycache__/
 *.pyc
+*.pyo
 *.egg-info/
 .venv/
 venv/
+.env
+dist/
+build/
+.pytest_cache/
 
 # OCR outputs (large)
 *.json
@@ -22,6 +27,8 @@ venv/
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Test data / temporary
 tmp/

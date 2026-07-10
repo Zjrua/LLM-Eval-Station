@@ -1,82 +1,179 @@
-# LLM Eval Workbench
+# LLM Eval Workbench 🧪
 
-Apple Silicon (M1 Ultra) 上的大模型本地部署、性能评测与工具链集成实验。
+> **大模型能力评估工作台** — 多维度 benchmark 评分系统 + 角色画像权重矩阵 + 本地模型部署监控 + MCP Server 工具链
 
-## 项目结构
+[![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://python.org)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+---
+
+## 📊 核心能力
+
+```
+                    ┌──────────────────────────┐
+                    │    LLM Eval Workbench     │
+                    └──────────┬───────────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+   │  评测引擎     │   │  角色画像     │   │  部署监控     │
+   │  scoring.py  │   │  profiles.py │   │  local-deploy │
+   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+          │                  │                  │
+          ▼                  ▼                  ▼
+   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+   │ 9 维度评分    │   │ 6 角色权重    │   │ MLX/omlx     │
+   │ 缺失数据处理  │   │ 归一化计算    │   │ 健康检查 API  │
+   │ 排名+报告     │   │ 交叉矩阵      │   │ 延迟监控     │
+   └──────────────┘   └──────────────┘   └──────────────┘
+```
+
+### 九大能力维度
+
+| 维度 | 名称 | 代表评测集 |
+|------|------|-----------|
+| D1 | 综合能力 | MMLU-Pro, GPQA Diamond, C-Eval |
+| D2 | 编程 | SWE-Bench, LiveCodeBench, HumanEval |
+| D3 | 数学推理 | AIME, MATH, GSM8K, IMO 2025 |
+| D4 | 科学推理 | GPQA Diamond, ARC-Challenge |
+| D5 | 长文本 | LongBench, Needle-in-Haystack |
+| D6 | 指令遵循 | IFEval, AlpacaEval 2.0 |
+| D7 | 工具调用/Agent | BFCL, AgentBench, BrowseComp |
+| D8 | 中文理解 | C-Eval, CMMLU, SuperCLUE |
+| D9 | 多轮对话 | MT-Bench, Arena Elo |
+
+### 六个 Agent 角色画像
+
+| Profile | 高权重维度 | 典型场景 |
+|---------|-----------|---------|
+| **Coder** | 编程 30%, 工具调用 20% | 代码生成、调试、测试 |
+| **Planner** | 综合 25%, 指令遵循 20% | 任务分解、依赖分析 |
+| **Writer** | 中文 25%, 综合 20% | 文档撰写、内容创作 |
+| **Researcher** | 工具调用 25%, 综合 20% | 信息搜索、数据收集 |
+| **Reviewer** | 编程 25%, 综合 20% | 代码审查、质量把关 |
+| **Doubter** | 数学 20%, 科学 20% | 质疑假设、压力测试 |
+
+---
+
+## 🚀 快速开始
+
+```bash
+# 安装
+pip install -e .
+
+# 运行内置 demo（4 个模型 × 6 个 Profile）
+python scripts/evaluate.py
+
+# 自定义数据
+python scripts/evaluate.py --data data/model_scores.csv --output my_report.md
+
+# 只看特定 Profile
+python scripts/evaluate.py --profile coder,writer --format compact
+```
+
+### 编程 API
+
+```python
+from llm_eval.models import Dimension, ModelInfo, ModelScores, Profile
+from llm_eval.profiles import get_profile_weights
+from llm_eval.scoring import compute_weighted_score
+
+model = ModelScores(
+    model=ModelInfo(name="My-Model", provider="custom"),
+    scores={Dimension.D1: 85.0, Dimension.D2: 78.0},
+)
+result = compute_weighted_score(model, get_profile_weights(Profile.CODER))
+print(f"Coder 得分: {result.scored.weighted_score:.1f}")
+```
+
+更多示例见 [`examples/basic_usage.py`](examples/basic_usage.py)。
+
+---
+
+## 📈 核心结论
+
+| # | 模型 | 综合排名 | Coder | Planner | Researcher |
+|---|------|---------|-------|---------|------------|
+| 🥇 | **GLM-5.1** | 最全面 | 81.6 | 82.3 | 80.4 |
+| 🥈 | **DeepSeek-V4-Pro** | 编程/数学最强 | 84.5 | 84.7 | 80.8 |
+| 🥉 | DeepSeek-V4-Flash | 高性价比 | 74.2 | 77.1 | 69.3 |
+
+---
+
+## 📂 项目结构
 
 ```
 llm-eval-workbench/
-├── docs/                          # 研究文档
-│   ├── ml-framework-comparison.md  # MLX vs llama.cpp vs Ollama 横向选型
-│   ├── qwen35-mlx-benchmark.md     # Qwen3.5-27B MLX vs GGUF 跨框架实测
-│   └── model-evaluation-guide.md   # 模型评测体系：9维度 × 6角色加权评分
-├── mcp-servers/                   # MCP Server 封装
-│   ├── unlimited-ocr-mcp-server.py  # Unlimited-OCR (3.34B VLM) → MCP
-│   ├── paddleocr-vl-mcp-server.py    # PaddleOCR-VL-1.6 → MCP (旧版)
-│   └── README.md                     # MCP Server 架构说明
+├── src/llm_eval/           # 核心评测引擎
+│   ├── models.py           #   数据模型
+│   ├── benchmarks.py       #   Benchmark 定义与权重
+│   ├── profiles.py         #   6 个 Profile 的权重矩阵
+│   ├── scoring.py          #   加权评分引擎
+│   └── report.py           #   Markdown 报告生成
 ├── scripts/
-│   ├── ocr/                         # OCR 相关脚本
-│   │   ├── parallel_ocr.py          # 多进程并行 OCR（4-8 worker）
-│   │   ├── ocr_to_latex.py          # OCR JSON → LaTeX/Markdown 转换器
-│   │   └── clean_tex.py             # LaTeX artifact 清洗工具
-│   └── benchmark/                   # 性能基准测试
-│       └── infer_benchmark.py      # 推理延迟/吞吐/内存基准测试脚本
-├── tools/                          # 辅助工具
-│   └── benchmark-weights.yaml      # 评测集权重配置（可被脚本读取）
-├── CLAUDE.md                        # AI Agent 项目说明
-└── .gitignore
+│   ├── evaluate.py         # CLI 命令行入口
+│   └── benchmark/          # 推理基准测试（MLX vs GGUF 等）
+├── examples/
+│   └── basic_usage.py      # 编程 API 使用示例
+├── docs/                   # 评测方法论与报告
+│   ├── benchmarks-survey.md
+│   ├── benchmark-results.md
+│   ├── profile-weight-system.md
+│   ├── final-report.md
+│   ├── ml-framework-comparison.md  # MLX vs llama.cpp vs Ollama
+│   └── model-evaluation-guide.md   # 9维度×6角色评分框架
+├── local-deploy/           # MLX 本地部署监控
+│   ├── omlx_client.py      #   OMLX 异步客户端
+│   ├── omlx_monitor.py     #   FastAPI 监控路由
+│   ├── app.py              #   部署入口
+│   └── test_omlx.py        #   pytest 测试
+├── mcp-servers/            # MCP Server 工具链
+│   ├── unlimited-ocr-mcp-server.py  # Unlimited-OCR 3.34B VLM
+│   └── paddleocr-vl-mcp-server.py   # 旧版参考
+├── data/                   # 示例数据
+│   ├── model_scores.csv
+│   └── profile_weights.csv
+├── tools/benchmark-weights.yaml     # 评测集权重配置
+└── pyproject.toml
 ```
 
-## 核心内容
+---
 
-### 1. 推理框架横向选型
+## 🔬 方法论要点
 
-在 M1 Ultra 上对比 **MLX**、**llama.cpp (GGUF)**、**Ollama** 三个主流推理框架：
+1. **加权评分**：每个 Profile 定义 9 维度权重矩阵，Σ = 1.0
+2. **缺失数据处理**：跳过缺失维度，权重归一化到可用维度
+3. **覆盖率标注**：每个模型标注数据完整性
+4. **局限性透明**：报告明确列出方法论局限
 
-| 维度 | MLX | llama.cpp | Ollama |
-|------|-----|-----------|--------|
-| 语言 | Python | C/C++ | Go+llama.cpp |
-| 后端 | Apple Metal | Apple Metal (ggml) | llama.cpp 封装 |
-| 量化格式 | affine/MXFP4/MXFP8 | GGUF (Q2_K~Q8_0) | GGUF |
-| 微调支持 | LoRA/QLoRA | 有限 | 无 |
-| Python 生态 | ✅ 原生 | ❌ | ❌ |
+---
 
-### 2. Qwen3.5-27B 跨框架实测
+## 🖥️ 本地部署监控 (local-deploy)
 
-三轮控制变量测试（M1 Ultra, 2026-04-14）：
+跨网络监控 Apple Silicon 上的 MLX 推理服务：
 
-| 条件 | GGUF (Ollama Q4_K_M) | MLX (4bit) |
-|------|----------------------|------------|
-| 256K context | 12.24 tok/s, 42GB | 25.43 tok/s, 15GB |
-| 32K context (公平) | **16.56 tok/s**, 24GB | **10.54 tok/s**, 15GB |
-| 3次并行验证 | 16.46-16.63 tok/s | 9.89-11.21 tok/s |
+```
+ZeroTier 虚拟网络 (192.168.192.0/24)
+        │
+        ▼
+┌───────────────────┐     FastAPI (port 8080)     ┌──────────────────┐
+│  Mac M1 Ultra     │ ◄──────────────────────────► │  Linux 监控节点   │
+│  oMLX :8000       │     /api/omlx/health        │  llm-eval        │
+│  Qwen3-E 0.6B/8B  │     /api/omlx/models        │  workbench       │
+│  Qwen3.5-9B       │     /api/omlx/latency       │                  │
+└───────────────────┘                             └──────────────────┘
+```
 
-**结论**：GGUF 生成速度 +50%+，MLX 首token延迟 -33%、内存省 40%。
+---
 
-### 3. Unlimited-OCR MCP Server
+## 🔧 硬件环境
 
-将 [Unlimited-OCR](https://modelscope.cn/models/PaddlePaddle/Unlimited-OCR)（3.34B VLM，OmniDocBench SOTA）封装为 [MCP](https://modelcontextprotocol.io/) Server：
-
-- **7 个工具**：文本/表格/公式/图表/印章/文字定位
-- **Apple Silicon MPS 适配**：monkey-patch `torch.Tensor.cuda()` → `.to("mps")`
-- **Lazy 加载**：首次调用时才加载模型（~3.4GB bf16）
-- **兼容旧接口**：工具签名与原 PaddleOCR-VL server 完全一致
-
-### 4. 模型评测体系
-
-9 维度（综合/编程/数学/长文本/指令遵循/工具调用/科学/中文/对话）× 6 角色（Coder/Planner/Writer/Researcher/Reviewer/Doubter）加权评分框架。
-
-## 硬件环境
-
-- **M1 Ultra** (128GB Unified Memory)
+- **Mac M1 Ultra** (128GB Unified Memory)
 - **macOS 26.5.2**
 - Python 3.12 + PyTorch (MPS)
-- MLX v0.31.x, Ollama, llama.cpp
+- MLX v0.31.x
 
-## License
+## 📄 License
 
-MIT
-
-## Author
-
-[张钧瑞](https://github.com/Zjrua) — 哈尔滨工业大学应用统计
+MIT © Zjrua
