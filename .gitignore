@@ -1,0 +1,28 @@
+# Dependencies
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# OCR outputs (large)
+*.json
+!tools/benchmark-weights.yaml
+
+# Compiled outputs
+*.pdf
+*.aux
+*.log
+*.out
+*.synctex.gz
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Test data / temporary
+tmp/
+*.tmp

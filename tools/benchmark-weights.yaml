@@ -1,0 +1,147 @@
+# Benchmark Weights Configuration
+# 评测集权重配置，可直接被评分脚本读取
+
+dimensions:
+  D1_comprehensive:
+    name: 综合能力
+    total_weight: 10.0
+    benchmarks:
+      - name: MMLU-Pro
+        weight: 3.0
+        description: 经典权威基准
+      - name: GPQA Diamond
+        weight: 2.5
+        description: 博士级科学推理
+      - name: Chinese SimpleQA
+        weight: 2.0
+        description: 中文事实问答
+      - name: SimpleQA
+        weight: 1.5
+        description: 事实性验证
+      - name: HLE
+        weight: 1.0
+        description: 极难前沿挑战
+
+  D2_coding:
+    name: 编程
+    total_weight: 12.0
+    benchmarks:
+      - name: SWE-Bench Verified
+        weight: 2.5
+      - name: SWE-Bench Pro
+        weight: 2.0
+      - name: LiveCodeBench
+        weight: 2.0
+      - name: Terminal Bench
+        weight: 1.5
+      - name: NL2Repo
+        weight: 1.0
+      - name: VIBE-V2
+        weight: 1.0
+      - name: PaperBench
+        weight: 1.0
+      - name: SVG-Bench
+        weight: 0.5
+      - name: KernelBench Hard
+        weight: 0.5
+
+  D3_math:
+    name: 数学推理
+    total_weight: 7.0
+    benchmarks:
+      - name: AIME 2026
+        weight: 2.5
+      - name: IMOAnswerBench
+        weight: 2.5
+      - name: HMMT Feb 2026
+        weight: 2.0
+
+  D5_long_context:
+    name: 长文本
+    total_weight: 5.0
+    benchmarks:
+      - name: LongBench-V2
+        weight: 2.0
+      - name: MRCR 1M
+        weight: 1.5
+      - name: CorpusQA 1M
+        weight: 1.5
+
+  D6_instruction_following:
+    name: 指令遵循
+    total_weight: 3.0
+    benchmarks:
+      - name: GDPval rubrics
+        weight: 2.0
+      - name: SpreadSheetBench
+        weight: 1.0
+
+  D7_tool_use:
+    name: 工具调用/Agent
+    total_weight: 11.0
+    benchmarks:
+      - name: BrowseComp
+        weight: 2.0
+      - name: MCP Atlas
+        weight: 2.0
+      - name: Toolathlon
+        weight: 2.0
+      - name: tau-squared-Bench
+        weight: 1.5
+      - name: Claw-Eval
+        weight: 1.5
+      - name: OSWorld-verified
+        weight: 1.0
+      - name: CyberGym
+        weight: 0.5
+      - name: BankerToolBench
+        weight: 0.5
+
+profiles:
+  Coder:
+    D1_comprehensive: 1
+    D2_coding: 2
+    D3_math: 0
+    D5_long_context: 1
+    D6_instruction_following: 1.5
+    D7_tool_use: 0.5
+  Planner:
+    D1_comprehensive: 0.5
+    D2_coding: 0.5
+    D3_math: 1
+    D5_long_context: 0
+    D6_instruction_following: 2
+    D7_tool_use: 1
+  Writer:
+    D1_comprehensive: 1
+    D2_coding: 0
+    D3_math: 0
+    D5_long_context: 1
+    D6_instruction_following: 0
+    D7_tool_use: 2
+  Researcher:
+    D1_comprehensive: 2
+    D2_coding: 0
+    D3_math: 1
+    D5_long_context: 1
+    D6_instruction_following: 1
+    D7_tool_use: 1
+  Reviewer:
+    D1_comprehensive: 2
+    D2_coding: 0.5
+    D3_math: 1
+    D5_long_context: 1
+    D6_instruction_following: 1
+    D7_tool_use: 0.5
+  Doubter:
+    D1_comprehensive: 2
+    D2_coding: 0
+    D3_math: 1
+    D5_long_context: 1
+    D6_instruction_following: 1
+    D7_tool_use: 1
+
+notes:
+  - "非 0-100 分的值（如 Codeforces Rating）计算时必须过滤"
+  - "维度 < 4/6 有数据时排名不可靠"
+  - "缺失数据不拉低分数，权重按比例归一化"
