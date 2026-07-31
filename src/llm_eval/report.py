@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from io import StringIO
+from typing import Optional
 
 from .models import Dimension, ModelScores, ProfileWeights
 from .profiles import WEIGHT_RATIONALES
@@ -12,12 +13,17 @@ def generate_report(
     model_scores_list: list[ModelScores],
     profiles: list[ProfileWeights],
     title: str = "LLM 模型评估报告",
+    *,
+    weights_meta: Optional[object] = None,
 ) -> str:
     """生成完整的 Markdown 评估报告.
 
     Args:
         model_scores_list: 待评估模型列表
         profiles: Profile 权重配置列表
+        weights_meta: 可选, 学出权重的元数据 (LearnedWeightsFile 实例).
+            传入时报告会显示权重来源 (手工/学出)、CI 区间、决策标注.
+            不传时按纯手工权重生成 (向后兼容).
         title: 报告标题
 
     Returns:
@@ -41,14 +47,48 @@ def generate_report(
 
     out.write("\n### 1.2 维度权重矩阵\n\n")
     dim_names = [f"D{i+1}" for i in range(9)]
-    out.write("| Profile | " + " | ".join(dim_names) + " |\n")
-    out.write("|---------|" + "|".join([":---:"] * 9) + "|\n")
-    for pw in profiles:
-        cells = [pw.profile.label.split(" — ")[0]]
-        for i, dim in enumerate(Dimension):
-            w = pw.weights.get(dim, 0)
-            cells.append(f"{w:.0%}" if w >= 0.1 else f"{w:.0%}" if w > 0 else "—")
-        out.write("| " + " | ".join(cells) + " |\n")
+
+    # 若有学出权重元数据, 显示 CI + 决策列
+    meta_by_profile = {}
+    if weights_meta is not None and hasattr(weights_meta, "profiles"):
+        meta_by_profile = {name: a for name, a in weights_meta.profiles.items()}
+
+    if meta_by_profile:
+        out.write("| Profile | " + " | ".join(dim_names) + " | 来源 | Lift |\n")
+        out.write("|---------|" + "|".join([":---:"] * 9) + "|:---:|:---:|\n")
+        for pw in profiles:
+            pname = pw.profile.value
+            artifact = meta_by_profile.get(pname)
+            cells = [pw.profile.label.split(" — ")[0]]
+            for dim in Dimension:
+                w = pw.weights.get(dim, 0)
+                if artifact and artifact.decision == "USE_LEARNED":
+                    ci = artifact.weights_ci.get(dim.name, [w, w])
+                    # 显示权重 + CI 下标 (如 13% [8-18])
+                    cells.append(f"{w:.0%}<br><sub>[{ci[0]:.0%}-{ci[1]:.0%}]</sub>"
+                                 if w > 0 else "—")
+                else:
+                    cells.append(f"{w:.0%}" if w > 0 else "—")
+            if artifact:
+                src = "🎓 学出" if artifact.decision == "USE_LEARNED" else "✋ 手工"
+                cells.append(src)
+                cells.append(f"{artifact.lift_pp:+.1f}pp" if artifact.lift_pp != 0 else "—")
+            else:
+                cells.extend(["✋ 手工", "—"])
+            out.write("| " + " | ".join(cells) + " |\n")
+        if weights_meta is not None:
+            out.write(f"\n> 💡 权重训练于 {getattr(weights_meta, 'trained_at', '?')}, "
+                      f"数据源: {getattr(weights_meta, 'data_source', '?')}. "
+                      f"Lift = 学出权重 held-out 准确率 - 手工权重准确率 (百分点).\n")
+    else:
+        out.write("| Profile | " + " | ".join(dim_names) + " |\n")
+        out.write("|---------|" + "|".join([":---:"] * 9) + "|\n")
+        for pw in profiles:
+            cells = [pw.profile.label.split(" — ")[0]]
+            for i, dim in enumerate(Dimension):
+                w = pw.weights.get(dim, 0)
+                cells.append(f"{w:.0%}" if w >= 0.1 else f"{w:.0%}" if w > 0 else "—")
+            out.write("| " + " | ".join(cells) + " |\n")
 
     # ── 二、模型数据 ──
     out.write("\n### 1.3 缺失数据处理策略\n\n")

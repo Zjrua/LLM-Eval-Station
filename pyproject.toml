@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-eval-workbench"
@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.0",
     "httpx>=0.27",
     "tabulate>=0.9",
+    "pyarrow>=25.0.0",
 ]
 license = {text = "MIT"}
 authors = [
@@ -27,12 +28,34 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-[project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
-fastapi = ["fastapi>=0.115", "uvicorn>=0.32"]
-
 [project.scripts]
 llm-eval = "scripts.evaluate:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+# ── uv 依赖组 (PEP 735) ──────────────────────────────────────
+# 用 `uv sync` 安装核心依赖; 加 `--group <name>` 装额外组.
+#   uv sync --group learning    # 跑权重学习
+#   uv sync --group dev         # 跑测试
+#   uv sync --group fastapi     # 跑 local-deploy 监控
+# 等价于旧的 `pip install -e ".[learning]"`, 但用 uv.lock 锁定可复现.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+# 权重学习子模块 src/llm_eval/learning/ 的依赖
+# 不装此组时核心评分功能 (scoring/profiles/models) 仍可用
+learning = [
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "jax>=0.4",
+    "numpyro>=0.14",
+    "huggingface_hub>=0.20",
+]
+fastapi = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+]
+

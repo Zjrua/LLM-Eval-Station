@@ -33,3 +33,13 @@ build/
 # Test data / temporary
 tmp/
 *.tmp
+
+# 学习权重: Arena 原始下载缓存(大), 不入 git
+data/arena_conversations/
+# 学出的权重产物(可重新生成), 但保留 jsonl 标注样本便于复现
+data/learned_weights.json
+# Arena 原始快照(10080 行, 可从 HF 重新下载), 只留去重后的 clean 版
+data/arena_text_elo.csv
+
+# ZCode 工具产物, 不入 git
+.zcode/

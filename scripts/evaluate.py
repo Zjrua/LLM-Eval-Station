@@ -141,6 +141,42 @@ def load_from_csv(path: str) -> list[ModelScores]:
     return models
 
 
+def _load_weights(args):
+    """根据 --weights 模式加载 Profile 权重.
+
+    三种模式:
+        handcraft (默认): 用 profiles.py 的手工权重
+        learned: 强制用 data/learned_weights.json 的学出权重
+        auto: 混合, 按 artifact.decision (USE_LEARNED 用学出, FALLBACK 用手工)
+
+    Returns:
+        (weights_dict_or_None, meta_or_None)
+        weights 为 None 时走手工路径; meta 为 LearnedWeightsFile 或 None (报告标注用)
+    """
+    if args.weights == "handcraft":
+        return None, None  # 走默认手工路径
+
+    weights_path = Path(args.weights_file)
+    if not weights_path.exists():
+        if args.weights == "auto":
+            print(f"ℹ️  未找到学出权重文件 ({weights_path}), 回退到手工权重")
+            return None, None
+        print(f"❌ 学出权重文件不存在: {weights_path}")
+        print("   请先运行: python scripts/learn_weights.py --source synthetic")
+        sys.exit(1)
+
+    from llm_eval.learning.persist import (
+        load_learned_weights,
+        load_profile_weights_for_eval,
+        get_learned_profiles_summary,
+    )
+    print(get_learned_profiles_summary(weights_path))
+    print()
+    meta = load_learned_weights(weights_path)
+    weights = load_profile_weights_for_eval(weights_path, mode=args.weights)
+    return weights, meta
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="LLM Eval Workbench — 大模型能力评估",
@@ -151,6 +187,8 @@ def main():
   python scripts/evaluate.py --data data/my_scores.csv
   python scripts/evaluate.py --profile coder,planner
   python scripts/evaluate.py --output report.md
+  python scripts/evaluate.py --weights learned        # 用学出权重
+  python scripts/evaluate.py --weights auto           # 混合 (按决策)
         """,
     )
     parser.add_argument(
@@ -168,6 +206,14 @@ def main():
         "--format", "-f", choices=["full", "compact"], default="full",
         help="输出格式: full=完整报告, compact=仅排名表格"
     )
+    parser.add_argument(
+        "--weights", choices=["handcraft", "learned", "auto"], default="auto",
+        help="权重来源: handcraft=手工, learned=强制学出, auto=按决策混合 (默认 auto)"
+    )
+    parser.add_argument(
+        "--weights-file", default="data/learned_weights.json",
+        help="学出权重 JSON 文件路径 (默认: data/learned_weights.json)"
+    )
     args = parser.parse_args()
 
     # 加载数据
@@ -176,12 +222,24 @@ def main():
     else:
         models = _DEMO_MODELS
 
-    # 选择 Profiles
-    if args.profile:
-        profile_names = [p.strip() for p in args.profile.split(",")]
-        profiles = [get_profile_weights(Profile(p)) for p in profile_names]
+    # 选择 Profiles: 优先用学出权重 (若 --weights 非 handcraft 且文件存在)
+    learned_weights, weights_meta = _load_weights(args)
+
+    if learned_weights is not None:
+        # 用学出权重
+        if args.profile:
+            profile_names = [p.strip() for p in args.profile.split(",")]
+            profiles = [learned_weights[Profile(p)] for p in profile_names]
+        else:
+            profiles = list(learned_weights.values())
     else:
-        profiles = all_profiles()
+        # 手工权重路径 (原逻辑)
+        weights_meta = None
+        if args.profile:
+            profile_names = [p.strip() for p in args.profile.split(",")]
+            profiles = [get_profile_weights(Profile(p)) for p in profile_names]
+        else:
+            profiles = all_profiles()
 
     if args.format == "compact":
         from llm_eval.scoring import cross_profile_ranking
@@ -193,11 +251,12 @@ def main():
                       f"(覆盖 {r.scored.coverage:.0%}, {r.scored.data_quality})")
         return
 
-    # 生成完整报告
-    report = generate_report(models, profiles)
+    # 生成完整报告 (传 weights_meta 以在报告里标注权重来源/CI/决策)
+    report = generate_report(models, profiles, weights_meta=weights_meta)
     Path(args.output).write_text(report, encoding="utf-8")
+    src_label = f", 权重: {args.weights}" if learned_weights is not None else ", 权重: 手工"
     print(f"✅ 报告已生成: {args.output}")
-    print(f"   模型数: {len(models)}, Profile 数: {len(profiles)}")
+    print(f"   模型数: {len(models)}, Profile 数: {len(profiles)}{src_label}")
 
 
 if __name__ == "__main__":

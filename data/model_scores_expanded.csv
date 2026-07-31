@@ -1,0 +1,5 @@
+model,provider,elo,D1,D2,D3,D4,D5,D6,D7,D8,D9,source,harness,note
+deepseek-v3,deepseek,1333,75.9,82.6,90.2,59.1,,86.1,,86.5,,HF model card (official),official-report,
+llama-3.1-405b-instruct,meta,1284,73.3,89.0,73.8,50.7,,88.6,,,,HF model card (official),official-report,
+llama-3.1-70b-instruct,meta,1261,66.4,80.5,68.0,46.7,,87.5,,,,HF model card (official),official-report,
+glm-5.1,zai,1465,,,,86.2,,,,,,HF model card (official),new-gen-benchmarks,"新代 benchmark(SWE-Bench-Pro/tau3-Bench/AIME2026)与旧代不兼容, 仅 GPQA 可比"

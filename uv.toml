@@ -1,0 +1,7 @@
+# uv 配置: PyPI 源用清华镜像 (已验证可用)
+# Python 发行版下载默认走 github, 若不通需配 UV_PYTHON_INSTALL_MIRROR 环境变量
+# 详见 docs/environment-setup.md
+
+[[index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+default = true
