@@ -1,13 +1,10 @@
-# LLM Eval Workbench 🧪
+# LLM Eval Station
 
-> **大模型能力评估工作台** - 多维度 benchmark 评分系统 + 角色画像权重矩阵 + **可学习权重**（偏好数据驱动）+ 本地模型部署监控 + MCP Server 工具链
+> **执行验证型 Agent 评测（v2，DeepSWE 范式）**：任务三件套（instruction / 可执行 verifier / 参考解）+ 固定 harness（所有模型同一 agent loop）+ pass@k/pass^k 双口径统计。v1 分场景加权选型系统已归档至 `legacy/`。
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue)](https://python.org)
-[![uv](https://img.shields.io/badge/uv-managed-purple)](https://docs.astral.sh/uv/)
-[![Tests](https://img.shields.io/badge/tests-49%2F49-brightgreen)]()
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-
----
+- 设计：[`docs/v2-design.md`](docs/v2-design.md)
+- Pilot 结果（4 任务×3 模型×3 采样）：[`results/RESULTS-v2-pilot.md`](results/RESULTS-v2-pilot.md)
+- 快速开始：`python harness/run_eval.py --validate-tasks`（任务防抖验证）→ `python harness/run_eval.py --models <m1>,<m2> --repeats 3`
 
 ## 📊 核心能力
 
