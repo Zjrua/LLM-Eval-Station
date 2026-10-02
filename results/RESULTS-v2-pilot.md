@@ -1,45 +1,50 @@
-# Station Harness v2 — Pilot 实测结果
+# LLM Eval Station v2 — Pilot 定稿结果
 
-> 2026-10-02 · 4 任务 × 3 模型 × 3 采样 · 全部走本机 new-api 网关（temperature=1.0）
-> 复现：`python harness/run_eval.py --models deepseek-flash,glm-5.3-flash,kimi-for-coding --repeats 3`
+> 2026-10-02 · 20 任务 × 3 模型 × 3 采样 = 180 rollouts · temperature=1.0 · 走本机 new-api 网关
+> harness: `harness/run_eval.py`（固定 agent loop、四工具、独立沙箱目录、verifier 防抖）
+> 复现：`python harness/run_eval.py --models kimi-for-coding,glm-5.3-flash,deepseek-flash --tasks tasks --repeats 3`
 
-## 任务集（全部通过 verifier 防抖验证：参考解×3 全过 + 空环境必败）
+## 总表
 
-| 任务 | 类型 | 来源 | verifier 组成 |
-|------|------|------|---------------|
-| t01_fix_intent_classifier | bug-fix | LearnLoop 意图分类器真实 bug 场景 | 隐藏 pytest（6 用例，produce 类 fail→pass）+ 防作弊回归（测试文件未删改） |
-| t02_bm25_idf | 实现 | LearnLoop RAG 模块 | 数值断言 pytest（4 用例）+ 实现须含对数（防硬编码） |
-| t03_wilson_ci | 实现 | LearnLoop eval/stats 模块 | 教科书值断言（容差 0.01）+ 边界（p=0/1、n=0）+ 单调性 |
-| t04_prefix_sum | 算法 | 信竞背景（线段树） | 正确性（随机对照暴力）+ 性能（20000 元素 10000 次混合作询 <5s，O(n) 暴力约 30s） |
+| 模型 | pass rate | 95% CI | pass@3 | pass^3 |
+|---|---|---|---|---|
+| glm-5.3-flash | **100.0%** (60/60) | [0.94, 1.00] | 1.00 | **1.00** |
+| kimi-for-coding | 98.3% (59/60) | [0.91, 1.00] | 1.00 | 0.95 |
+| deepseek-flash | 83.3% (50/60) | [0.72, 0.91] | 1.00 | 0.50 |
 
-## 主结果
+pass@k（能力上限，k 次采样至少一次通过的无偏估计）与 pass^k（可靠性，k 次全过的比例）分离是本框架的核心口径：三个模型 pass@3 全部 1.00，但 deepseek-flash 单次成功率 83.3%、三连全过仅 50%——能力够、不稳。
 
-| 模型 | pass rate | 95% CI (Wilson) | pass@3 | pass^3 |
-|------|-----------|-----------------|--------|--------|
-| glm-5.3-flash | **12/12 = 100%** | [75.7%, 100%] | 1.000 | **1.000** |
-| deepseek-flash | 11/12 = 91.7% | [64.6%, 98.5%] | 1.000 | 0.750 |
-| kimi-for-coding | 6/12 = 50.0% | [25.4%, 74.6%] | 0.909 | 0.000 |
+## 任务池（20 个，全部改编自真实项目场景）
 
-- **能力 vs 可靠性分离**（pass@3 高 / pass^3 低 = 会做但不稳定）：kimi 能力分 pass@3=0.909 但三次全过的任务数为 0——单次可用性差；deepseek 仅 t02 失手一次；glm-5.3-flash 全绿。
-- 小样本提醒：n=12/模型，CI 宽，此为 harness 验证性 pilot 而非结论性榜单。
+t01 意图分类 bug 修复 · t02 BM25 IDF 实现 · t03 Wilson 置信区间 · t04 线段树 · t05 硬编码→数据驱动重构 · t06 滑窗分块 overlap bug · t07 Reflexion 判定器 · t08 日志聚合 · t09 带并列排名 · t10 归一化越界 · t11 多文件修 import+加功能 · t12 Markdown 结构校验 · t13 LRU 缓存（O(1) 性能门限） · t14 CSV 榜单 · t15 整除截断 bug · t16 指数退避重试 · t17 多路检索融合 · t18 区间合并 · t19 配置深拷贝合并 · t20 trajectory 摘要
 
-## 失败归因（trajectory 分析）
+## 失败归因（deepseek-flash 10 次 FAIL）
 
-- **kimi × t01**：两次输出自由文本而非 `TOOL:` 格式（格式遵循）；step5 空回复触发 API 400 中断 rollout——属 **RUN_ERROR（基础设施/协议）**，非任务能力失败。该 case 提示 harness 需对空回复做防御，v2.1 修复。
-- **kimi × t04 两次失败**：线段树实现正确但性能超时 / 或边界处理错——**能力失败**，符合其定位（长上下文编码强、小模型算法弱）。
-- **deepseek × t02 一次失败**：数值精度用 float 直除——接近能力失败边缘，temperature=1 下的正常波动。
+| 模式 | 次数 | 说明 |
+|---|---|---|
+| 一条消息多个 TOOL 调用 | 7 | harness 只执行第一个；模型以为环境在响应、实际后续调用从未执行，误判完成后 DONE。协议遵循失败，非任务能力失败 |
+| 工具调用格式错误 | 3 | 输出非 `TOOL: 名称({json})` 格式，重格式提示后仍失败 |
 
-## Harness 设计要点（实测验证过的）
+kimi-for-coding 唯一失败（t16 backoff r1）：把 `sleep(base ** attempt)` 写成 `sleep(base * attempt)`（线性而非指数）。
 
-1. 固定 agent loop：read/write/edit/bash 四工具 + 单一系统提示，所有模型同 harness——分数反映模型不反映脚手架
-2. 任务三件套：instruction / verify.sh / solution（solution 只用于 verifier 防抖，打分时永不入工作目录）
-3. verifier 防抖工序真实抓到过任务作者的错误：t02 首版测试用例期望值算错（50.5/50.5+1 误当 2.5），参考解×3 全败暴露后修正
-4. 统计：pass@k 无偏估计 + pass^k 可靠性 + Wilson 95% CI
-5. trajectory 全量落盘 JSON，失败可归因到 step 级
+## Verifier 防抖记录（任务作者错误也被抓）
 
-## 下一步（v2.1）
+- t02：参考解测试期望值数学错误（ln(2.5) vs ln(2)）——参考解×3 全败暴露
+- t06：tail 期望 5 字符，滑窗口径实为 4——同上
+- t15：设定的"bug"经穷举反例搜索证伪（乘积含 0 项恰好归 0，边界自然正确）——任务前提错误，整体重设计
+- t05：verifier 回归检查「不得含旧变量名」误杀合法实现（从 JSON 加载但沿用旧名）——改为行为断言 + 关键词字面量位置检查
 
-- [ ] 空回复/API 错误防御：重试 + 空内容折叠，RUN_ERROR 与 FAIL 分开统计
-- [ ] 任务池扩到 20+（加 refactor / 多文件 / 带 lint 约束的任务）
-- [ ] 每任务 verifier 增加 PASS_TO_PASS（仓库既有检查）显式分组
-- [ ] 成本/步数/token 计入报告
+另有一次 harness 自身 bug：`--tasks` 相对路径在 sandbox 目录下失效，180 rollout 整体误判——修复为绝对路径，废弃轮次存档 `results/t05fix-PATHBUG/`。
+
+## 设计原则（承 DeepSWE）
+
+1. 任务三件套：instruction.md（人读） + verify.sh（机器判） + solution/（参考解，用于防抖，不给模型）
+2. Verifier 防抖：参考解×3 必须全过 + 原始环境必须失败（no-op 必败），防"verifier 太松"
+3. 固定 harness：所有被测模型同一 agent loop、同一工具集、同一系统提示——测模型不测 scaffolding
+4. 双口径：pass@k（能力）+ pass^k（可靠性）+ Wilson 95% CI
+5. RUN_ERROR 与 FAIL 分离：API 故障/格式中断不计为能力失败
+6. trajectory 全量落盘，失败逐条归因（协议遵循 vs 任务能力 vs verifier 假阴/假阳）
+
+## 与 v1 的关系
+
+v1（52 benchmark 加权聚合分场景选型）整体归档至 `legacy/`，理由：它测量的是"别人跑的分数"的加权平均（二级聚合），不是第一手执行证据。v2 每个数字都能用一条命令复现。

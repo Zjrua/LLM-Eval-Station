@@ -113,16 +113,26 @@ def run_agent(base_url, api_key, model, task_dir, max_steps=30):
         messages = [{"role": "system", "content": SYSTEM_PROMPT.replace("{max_steps}", str(max_steps))},
                     {"role": "user", "content": instruction + "\n\n（工作目录中已放置任务初始文件，先查看再动手。完成后输出 DONE）"}]
         for step in range(max_steps):
-            try:
-                reply = llm_call(base_url, api_key, model, messages)
-            except Exception as e:
-                traj.append({"step": step, "event": "llm_error", "error": str(e)})
-                # 网络错误重试一次
-                time.sleep(2)
-                try: reply = llm_call(base_url, api_key, model, messages)
-                except Exception as e2:
-                    traj.append({"step": step, "event": "llm_fatal", "error": str(e2)})
-                    return traj, False
+            # 网络/服务端错误：指数退避重试 3 次
+            reply = None
+            for attempt in range(3):
+                try:
+                    reply = llm_call(base_url, api_key, model, messages)
+                    break
+                except Exception as e:
+                    traj.append({"step": step, "event": "llm_error",
+                                 "attempt": attempt, "error": str(e)})
+                    time.sleep(2 ** attempt)
+            if reply is None:
+                # 连续 API 失败：记 RUN_ERROR，非能力失败
+                traj.append({"step": step, "event": "run_error", "error": "api_unavailable"})
+                return traj, "RUN_ERROR"
+            # 空回复（可能只有 reasoning 被截断）：注入提示重试一轮，避免空 assistant 污染历史
+            if not reply.strip():
+                messages.append({"role": "assistant", "content": "(继续，请直接输出工具调用)"})
+                messages.append({"role": "user", "content": "你的上一条回复为空。请输出 TOOL: 名称({json参数}) 或 DONE。"})
+                traj.append({"step": step, "event": "empty_reply"})
+                continue
             messages.append({"role": "assistant", "content": reply})
             traj.append({"step": step, "assistant": reply})
             if reply.strip().startswith("DONE") or reply.strip().endswith("DONE"):
@@ -189,7 +199,7 @@ def main():
     ap.add_argument("--validate-tasks", action="store_true")
     args = ap.parse_args()
 
-    tasks = sorted(d for d in Path(args.tasks).iterdir() if (d / "verify.sh").exists())
+    tasks = sorted(d for d in Path(args.tasks).resolve().iterdir() if (d / "verify.sh").exists())
 
     if args.list_tasks:
         for t in tasks: print(t.name)
@@ -209,14 +219,22 @@ def main():
         model_results = {}
         for tdir in tasks:
             passes = []
+            run_errors = 0
             for r in range(args.repeats):
                 t0 = time.time()
                 traj, passed = run_agent(args.base_url, api_key, model.strip(), tdir, args.max_steps)
+                if passed == "RUN_ERROR":
+                    run_errors += 1
+                    passed = False
+                    print(f"{model.strip()} / {tdir.name} / r{r}: RUN_ERROR ({time.time()-t0:.0f}s)", flush=True)
+                else:
+                    print(f"{model.strip()} / {tdir.name} / r{r}: {'PASS' if passed else 'FAIL'} ({time.time()-t0:.0f}s)", flush=True)
                 passes.append(passed)
                 (outdir / f"{model.strip()}__{tdir.name}__r{r}.json").write_text(
                     json.dumps(traj, ensure_ascii=False, indent=1))
-                print(f"{model.strip()} / {tdir.name} / r{r}: {'PASS' if passed else 'FAIL'} ({time.time()-t0:.0f}s)", flush=True)
             model_results[tdir.name] = passes
+            if run_errors:
+                print(f"  ⚠ {tdir.name}: {run_errors}/{args.repeats} RUN_ERROR（API 故障，不计能力失败）", flush=True)
         all_results[model.strip()] = model_results
 
     # 汇总
